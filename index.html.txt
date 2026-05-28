@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SMP Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- STYLE -->
+  <style>
+    body { font-family: Arial; padding:20px; background:#f5f5f5; }
+    input, button { padding:10px; margin:5px; width:100%; }
+    button { background:green; color:white; border:none; }
+    #map { height:300px; margin-top:20px; }
+  </style>
+</head>
+<body>
+
+<h2>PT. Sakti Mandiri Perkasa</h2>
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <h3>Login</h3>
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" style="display:none;">
+
+  <h3>Input Data</h3>
+  <input id="no_sj" placeholder="No Surat Jalan">
+  <input id="driver" placeholder="Driver">
+  <input id="volume" type="number" placeholder="Volume">
+  <input type="file" id="foto">
+
+  <button onclick="tambahData()">Simpan + GPS</button>
+  <button onclick="uploadOCR()">Scan OCR</button>
+  <button onclick="generatePDF()">Download Invoice</button>
+
+  <h3>Revenue</h3>
+  <p id="rev">0</p>
+
+  <div id="map"></div>
+
+  <h3>Data</h3>
+  <table border="1" width="100%">
+    <tbody id="data"></tbody>
+  </table>
+
+</div>
+
+<!-- LIBRARY -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js"></script>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+
+// 🔑 ISI INI DULU !!!
+const SUPABASE_URL = "https://bznbbfknuwsnugkewmjq.supabase.co";
+const SUPABASE_KEY = "M@hisatadjimalela72";
+
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// LOGIN
+async function login(){
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if(!error){
+    document.getElementById("loginBox").style.display = "none";
+    document.getElementById("dashboard").style.display = "block";
+    loadData();
+    loadMap();
+  } else {
+    alert("Login gagal");
+  }
+}
+
+// LOAD DATA
+async function loadData(){
+  const { data } = await supabase.from("surat_jalan").select("*");
+
+  let table = document.getElementById("data");
+  table.innerHTML = "";
+
+  let revenue = 0;
+
+  data.forEach(d=>{
+    table.innerHTML += `<tr>
+      <td>${d.no_surat_jalan}</td>
+      <td>${d.driver}</td>
+      <td>${d.volume}</td>
+    </tr>`;
+
+    revenue += d.volume * 50000;
+  });
+
+  document.getElementById("rev").innerText = "Rp " + revenue;
+}
+
+// TAMBAH DATA + GPS
+function tambahData(){
+  navigator.geolocation.getCurrentPosition(async pos => {
+
+    await supabase.from("surat_jalan").insert([{
+      no_surat_jalan: no_sj.value,
+      driver: driver.value,
+      volume: volume.value,
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude
+    }]);
+
+    loadData();
+    loadMap();
+  });
+}
+
+// OCR
+async function uploadOCR(){
+  const file = document.getElementById("foto").files[0];
+  const { data: { text } } = await Tesseract.recognize(file, 'eng');
+
+  no_sj.value = text.match(/SJ\d+/)?.[0] || "";
+}
+
+// MAP
+let map = L.map('map').setView([-2,117],5);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+async function loadMap(){
+  const { data } = await supabase.from("surat_jalan").select("*");
+
+  data.forEach(d=>{
+    if(d.latitude){
+      L.marker([d.latitude, d.longitude])
+        .addTo(map)
+        .bindPopup(d.driver);
+    }
+  });
+}
+
+// PDF
+function generatePDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  doc.text("INVOICE PT. SAKTI MANDIRI PERKASA", 20, 20);
+  doc.save("invoice.pdf");
+}
+
+</script>
+
+</body>
+</html>
